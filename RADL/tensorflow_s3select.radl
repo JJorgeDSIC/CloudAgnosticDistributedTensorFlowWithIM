@@ -1,0 +1,116 @@
+network publica (
+  outbound = 'yes' and
+  outports = '2222/tcp-2222/tcp,22/tcp-22/tcp,6006/tcp-6006/tcp,8888/tcp-8888/tcp, 9000/tcp-9000/tcp, 8033/tcp-8033/tcp' and
+  provider_id = 'vpc-XXXXXX.subnet-2bfb6c4f'
+)
+network privada(
+  outbound = 'no' and
+  outports = '2222/tcp-2222/tcp,22/tcp-22/tcp,6006/tcp-6006/tcp, 9000/tcp-9000/tcp, 8033/tcp-8033/tcp, 8888/tcp-8888/tcp' and
+  provider_id = 'vpc-XXXXXX.subnet-2bfb6c4f'
+)
+
+
+system ps (
+  net_interface.0.connection = 'publica' and
+  net_interface.0.dns_name = 'ps-0' and
+  net_interface.1.connection = 'privada' and
+  net_interface.1.dns_name = 'ps-0-priv' and
+  disk.0.image.url = 'aws://us-east-1/ami-5c66ea23' and
+  instance_type = 't2.micro' and
+  disk.0.os.name='linux' and
+  disk.0.os.credentials.username='ubuntu' and
+  disk.0.applications contains (name='ansible.modules.git+https://github.com/JJorgeDSIC/ansible-role-hadoop-1|hadoop') and
+  disk.0.applications contains (name='ansible.modules.git+https://github.com/JJorgeDSIC/ansible-role-tf|tf_node') and
+  disk.0.os.credentials.public_key = 'USERKEYPAIR' and
+  disk.0.os.credentials.private_key = '-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----'
+)
+
+system worker (
+  net_interface.0.connection = 'privada' and
+  net_interface.0.dns_name = 'worker-#N#' and
+  net_interface.1.connection = 'publica' and
+  disk.0.image.url = 'aws://us-east-1/ami-5c66ea23' and
+  instance_type = 't2.micro' and
+  disk.0.os.name='linux' and
+  disk.0.os.credentials.username='ubuntu' and
+  disk.0.applications contains (name='ansible.modules.git+https://github.com/JJorgeDSIC/ansible-role-hadoop-1|hadoop') and
+  disk.0.applications contains (name='ansible.modules.git+https://github.com/JJorgeDSIC/ansible-role-tf|tf_node') and
+  disk.0.os.credentials.public_key = 'USERKEYPAIR' and
+  disk.0.os.credentials.private_key = '-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----'
+)
+
+
+configure ps (
+@begin
+---
+  - vars:
+      ps_nodes: 1
+      worker_nodes: 1
+      access_key_id: 'ACCESS_KEY'
+      secret_access_key_id: 'SECRET_ACCESS_KEY'
+    tasks:
+      - lineinfile: dest=/etc/ssh/sshd_config regexp="PasswordAuthentication no" line="PasswordAuthentication no" state=absent
+      - lineinfile: dest=/etc/ssh/sshd_config regexp="PasswordAuthentication yes" line="PasswordAuthentication yes" state=present
+    roles:
+      - { role: 'tf_node'}
+@end
+)
+
+configure worker (
+@begin
+---
+  - vars:
+      ps_nodes: 1
+      worker_nodes: 1
+      access_key_id: 'ACCESS_KEY'
+      secret_access_key_id: 'SECRET_ACCESS_KEY'
+    tasks:
+      - lineinfile: dest=/etc/ssh/sshd_config regexp="PasswordAuthentication no" line="PasswordAuthentication no" state=absent
+      - lineinfile: dest=/etc/ssh/sshd_config regexp="PasswordAuthentication yes" line="PasswordAuthentication yes" state=present
+    roles:
+      - { role: 'tf_node'}
+@end
+)
+
+configure launch_training (
+@begin
+---
+  - tasks:
+    - command: chmod +x run_s3.sh
+      become: true
+      args:
+        chdir: /home/ubuntu/
+    - name: Run the experiment.
+      shell: /home/ubuntu/run_s3.sh 2> /dev/null
+      become: true
+      args:
+        chdir: /home/ubuntu/
+
+@end    
+)
+
+configure launch_tensorboard (
+@begin
+---
+  - tasks:
+    # A small delay 
+    - command: /bin/sleep 60
+    - command: tensorboard --logdir=/home/ubuntu/logs_summary/ --port=6006 
+ 
+@end    
+)
+
+deploy ps 1
+deploy worker 1
+
+contextualize (
+    system ps configure ps step 1
+    system worker configure worker step 1
+    system ps configure launch_training step 2
+    system worker configure launch_training step 2
+    system worker configure launch_tensorboard step 2
+)

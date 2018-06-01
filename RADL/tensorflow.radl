@@ -1,0 +1,62 @@
+network publica (
+  outbound = 'yes' and
+  outports = '2222/tcp-2222/tcp,22/tcp-22/tcp' and
+  provider_id = 'vpc-XXXXXXX.subnet-2bfb6c4f'
+)
+
+system ps (
+  #cpu.arch='x86_64' and
+  #cpu.count>=1 and
+  #memory.size>=512m and
+  net_interface.0.connection = 'publica' and
+  net_interface.0.dns_name = 'ps-#N#' and
+  disk.0.image.url = 'aws://us-east-1/ami-7dce6507' and
+  instance_type = 't2.micro' and
+  disk.0.os.name='linux' and
+  disk.0.os.credentials.username='ubuntu' and
+  disk.0.applications contains (name='ansible.modules.git+https://github.com/JJorgeDSIC/ansible-role-tf|tf_node') and
+  disk.0.os.credentials.public_key = 'USER-keypair' and
+  disk.0.os.credentials.private_key = '-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----'
+)
+
+system worker (
+  #cpu.arch='x86_64' and
+  #cpu.count>=1 and
+  #memory.size>=512m and
+  net_interface.0.connection = 'publica' and
+  net_interface.0.dns_name = 'worker-#N#' and
+  disk.0.image.url = 'aws://us-east-1/ami-7dce6507' and
+  instance_type = 't2.micro' and
+  disk.0.os.name='linux' and
+  disk.0.os.credentials.username='ubuntu' and
+  disk.0.applications contains (name='ansible.modules.git+https://github.com/JJorgeDSIC/ansible-role-tf|tf_node') and
+  disk.0.os.credentials.public_key = 'USER-keypair' and
+  disk.0.os.credentials.private_key = '-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----'
+)
+
+configure ps (
+@begin
+- vars:
+    ps_nodes: 1
+    worker_nodes: 2
+  roles:
+  - role: tf_node
+@end
+)
+
+configure worker (
+@begin
+- vars:
+    ps_nodes: 1
+    worker_nodes: 2
+  roles:
+  - role: tf_node
+@end
+)
+
+deploy ps 1
+deploy worker 2
